@@ -1,0 +1,40 @@
+From d003b04f9ff0b2dd71cf8564ba45c164f8e5046c Mon Sep 17 00:00:00 2001
+From: Jack Lloyd <jack@randombit.net>
+Date: Tue, 14 Sep 2021 07:24:31 -0400
+Subject: [PATCH] Fix a minor OAEP side channel
+
+OAEP had some logic to handle how RSA used to work, but this was
+already fixed way back in b8966d0f8.
+
+Thanks to @lieser for pointing out this issue.
+---
+ src/lib/pk_pad/eme_oaep/oaep.cpp | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/src/lib/pk_pad/eme_oaep/oaep.cpp b/src/lib/pk_pad/eme_oaep/oaep.cpp
+index 163efbfefe0..428b6ac3bf5 100644
+--- a/src/lib/pk_pad/eme_oaep/oaep.cpp
++++ b/src/lib/pk_pad/eme_oaep/oaep.cpp
+@@ -72,9 +72,9 @@ secure_vector<uint8_t> OAEP::unpad(uint8_t& valid_mask,
+    Therefore, the first byte can always be skipped safely.
+    */
+ 
+-   const uint8_t skip_first = CT::Mask<uint8_t>::is_zero(in[0]).if_set_return(1);
++   const auto leading_0 = CT::Mask<uint8_t>::is_zero(in[0]);
+ 
+-   secure_vector<uint8_t> input(in + skip_first, in + in_length);
++   secure_vector<uint8_t> input(in + 1, in + in_length);
+ 
+    const size_t hlen = m_Phash.size();
+ 
+@@ -86,7 +86,9 @@ secure_vector<uint8_t> OAEP::unpad(uint8_t& valid_mask,
+              input.data(), hlen,
+              &input[hlen], input.size() - hlen);
+ 
+-   return oaep_find_delim(valid_mask, input.data(), input.size(), m_Phash);
++   auto unpadded = oaep_find_delim(valid_mask, input.data(), input.size(), m_Phash);
++   valid_mask &= leading_0.unpoisoned_value();
++   return unpadded;
+    }
+ 
+ secure_vector<uint8_t>
